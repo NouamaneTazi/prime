@@ -281,14 +281,21 @@ def collate_fn(samples: list[dict[str, torch.LongTensor]]) -> dict[str, torch.Lo
 
 
 def make_mixed_nibble_dataset(data_config: DataConfig, tokenizer_info: TokenizerInfo) -> StatefulDataset:
-    dataset_paths = data_config.dataset_name_or_paths.split(',')
-    probabilities = [int(ratio) / 100 for ratio in data_config.dataset_ratio.split(':')]
+    dataset_string = data_config.dataset_name_or_paths
+
+    if ',' in dataset_string:
+        dataset_paths = dataset_string.split(',')
+        probabilities = [int(ratio) / 100 for ratio in data_config.dataset_ratio.split(':')]
+    else:
+        dataset_paths = [os.path.join(dataset_string, path) for path in os.listdir(dataset_string)]
+        dataset_paths = [path for path in dataset_paths if os.path.getsize(path) > 0]
+        probabilities = [100.0 for _ in dataset_paths]
 
     for dataset_path in dataset_paths:
         if not os.path.exists(dataset_path):
             raise ValueError(f"Dataset path {dataset_path} does not exist")
-        if not dataset_path.endswith('.bin'):
-            raise ValueError("Cannot mix nibble- with non-nibble dataset files!")
+        if dataset_path.endswith('.parquet'):
+            raise ValueError("Cannot mix nibble- with parquet dataset files!")
 
     rand = random.Random()
 
@@ -304,6 +311,7 @@ def make_mixed_nibble_dataset(data_config: DataConfig, tokenizer_info: Tokenizer
         probabilities
     )
 
+
 def get_parquet_files(dataset_path: str) -> List[str]:
     files = os.listdir(dataset_path)
     parquet_files = []
@@ -312,8 +320,10 @@ def get_parquet_files(dataset_path: str) -> List[str]:
             parquet_files.append(os.path.join(dataset_path, file))
     return parquet_files
 
+
 def get_hf_tokenizer(tokenizer_info: TokenizerInfo) -> PreTrainedTokenizer:
     return AutoTokenizer.from_pretrained(tokenizer_info.hf_name, use_fast=True)
+
 
 def make_mixed_parquet_dataset(data_config: DataConfig, tokenizer_info: TokenizerInfo) -> StatefulDataset:
     dataset_paths = data_config.dataset_name_or_paths.split(',')
@@ -336,9 +346,20 @@ def make_mixed_parquet_dataset(data_config: DataConfig, tokenizer_info: Tokenize
     iterator_seed = rand.randint(0, 2 ** 31 - 1)
 
     return InterleaveDataset(
-        [ParquetDataset(get_parquet_files(dataset_path), data_config.seq_length, iterator_seed, get_hf_tokenizer(tokenizer_info)) for dataset_path in dataset_paths],
+        [ParquetDataset(get_parquet_files(dataset_path), data_config.seq_length, iterator_seed,
+                        get_hf_tokenizer(tokenizer_info)) for dataset_path in dataset_paths],
         probabilities
     )
+
+
+def _is_or_contains_nibble_file(paths_string: str):
+    if ',' in paths_string:
+        return any([path.endswith('.bin') for path in paths_string.split(',')])
+    else:
+        if not os.path.isdir(paths_string):
+            raise ValueError("path string with out ',' delimiter must be a directory!")
+        files = os.listdir(paths_string)
+        return any([path.endswith('.bin') for path in files])
 
 
 def make_dataloader(
@@ -351,8 +372,8 @@ def make_dataloader(
     if data_config.fake:
         train_dataset = FakeTokenizedDataset(data_config.seq_length, DEBUG_VOCAB_SIZE)
     else:
-        is_nibble_file = any([path.endswith('.bin') for path in data_config.dataset_name_or_paths.split(',')])
-        if is_nibble_file:
+        is_nibble = _is_or_contains_nibble_file(data_config.dataset_name_or_paths)
+        if is_nibble:
             train_dataset = make_mixed_nibble_dataset(data_config, tokenizer_info)
         else:
             train_dataset = make_mixed_parquet_dataset(data_config, tokenizer_info)

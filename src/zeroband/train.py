@@ -341,7 +341,7 @@ def run_async_outer_step(
             ReduceOp.AVG
         )
         end_time = time.time()
-        print(f"All-Reduce took {end_time - start_time} seconds")
+        logger.info(f"All-Reduce took {end_time - start_time} seconds")
 
     logger.debug("Launching all reduce...")
     all_reduce_thread = threading.Thread(target=run_all_reduce, name="ReduceThread")
@@ -443,6 +443,8 @@ def run_shared_state_sync(
         communicator: Communicator,
         model: torch.nn.Module, outer_parameters_list: List[torch.nn.Parameter],
 
+        logger: Logger,
+
         num_syncs: IntRef,
         train_profiler: Profiler,
         late_joiner: bool,
@@ -451,14 +453,14 @@ def run_shared_state_sync(
     with train_profiler.session("pccl::sync_shared_state"):
         sync_info = communicator.sync_shared_state(shared_state)
         shared_state.revision += 1
-        print(f"sync_info tx_bytes: {sync_info.tx_bytes}, rx_bytes: {sync_info.rx_bytes}")
+        logger.info(f"sync_info tx_bytes: {sync_info.tx_bytes}, rx_bytes: {sync_info.rx_bytes}")
         num_syncs += 1
         if num_syncs > 1 and not late_joiner:
             assert sync_info.rx_bytes == 0, "Shared state drifted unexpectedly in peers!"
 
         # initialize inner state on first sync
         if num_syncs == 1:
-            print("Initializing inner state...")
+            logger.info("Initializing inner state...")
             sync_inner_with_outer_state(model, outer_parameters_list)
 
 
@@ -600,6 +602,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
     with setup_profiler.session("torch::compile"):
         if config.hardware.torch_compile:
+            logger.info("Compiling model...")
             model = torch.compile(model) if not TYPE_CHECKING else model
 
     memory_profiler: Optional[MemoryProfiler] = None
@@ -613,7 +616,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
     # initialize PCCL
     communicator = Communicator(config.pccl.ccoip_host, mpi_config.mpi_rank if mpi_config is not None else 0)
     communicator.connect(n_attempts=15)
-    print("Connected to master via PCCL")
+    logger.info("Connected to master via PCCL")
 
     if PRIME_SETUP_PROFILER_PRINT_TIMINGS:
         setup_profiler.print_report()
@@ -652,14 +655,14 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
         # Possibly update topology / wait for enough peers
         global_world_size: int
         with train_profiler.session("pccl::update_topology"):
-            if local_iter_num > 1 or local_world_size == 1:
+            if local_iter_num > 1:
                 logger.info("Checking are_peers_pending...")
                 while True:
                     try:
                         if communicator.are_peers_pending():
-                            logger.info(
-                                "Join-Candidate peers pending; awaiting concurrent collective operations to accept new peers...")
                             if all_reduce_thread is not None:
+                                logger.info(
+                                    "Join-Candidate peers pending; awaiting concurrent collective operations to accept new peers...")
                                 all_reduce_thread.join()
                             communicator.update_topology()
                             topology_updated = True
@@ -668,7 +671,8 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
                         logger.info(f"Updating PCCL topology failed {e}, retrying...")
                         time.sleep(1)
 
-            global_world_size = communicator.get_attribute(Attribute.GLOBAL_WORLD_SIZE) # obtain global world-size after join
+            global_world_size = communicator.get_attribute(
+                Attribute.GLOBAL_WORLD_SIZE)  # obtain global world-size after join
 
             if mpi_config is not None:
                 largest_peer_group_size = communicator.get_attribute(Attribute.LARGEST_PEER_GROUP_WORLD_SIZE)
@@ -681,16 +685,19 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
         # TODO: Make minimum num pccl peers configurable
         local_world_size = communicator.get_attribute(Attribute.LOCAL_WORLD_SIZE)
-        if local_world_size < 2:
-            logger.info("Waiting for more workers to join...")
-            time.sleep(1)
-            continue
+        # if local_world_size < 2:
+        #    logger.info("Waiting for more workers to join...")
+        #    time.sleep(1)
+        #    continue
 
         if topology_updated:
             logger.info("Running shared state synchronization...")
-            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, num_syncs, train_profiler,
+            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list,
+                                  logger,
+                                  num_syncs, train_profiler,
                                   False)
 
+        logger.info("Running inner steps...")
         run_inner_steps(
             model, train_dataloader_iterator, inner_optimizer, device,
 
@@ -752,8 +759,8 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
             # Since ckpt strategy and all reduce is done at the outer loop level.
             break
 
-        if mpi_config is None or mpi_config.mpi_rank == 0:
-            wandb.finish()
+    if mpi_config is None or mpi_config.mpi_rank == 0:
+        wandb.finish()
 
     if config.hardware.memory_profiler is not None:
         logger.debug(f"Max memory used: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -766,7 +773,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 def main():
     # Allow eager fallback during production so that the training runs don't die
     # However, in development, we want to know that we broke torch compile
-    torch._dynamo.config.suppress_errors = "ZERO_BAND_DEV" not in os.environ  # type: ignore
+    # torch._dynamo.config.suppress_errors = "ZERO_BAND_DEV" not in os.environ  # type: ignore
     torch.set_float32_matmul_precision("high")
 
     mpi_config: Optional[MPIConfig] = ccl_utils.make_mpi_config(
