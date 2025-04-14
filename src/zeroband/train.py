@@ -686,14 +686,22 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
             time.sleep(1)
             continue
 
-        # TODO: Make minimum num pccl peers configurable
         local_world_size = communicator.get_attribute(Attribute.LOCAL_WORLD_SIZE)
-        # if local_world_size < 2:
-        #    logger.info("Waiting for more workers to join...")
-        #    time.sleep(1)
-        #    continue
+        if local_world_size < 2:
+            logger.info("Waiting for more workers to join...")
+            time.sleep(1)
+            continue
 
         if topology_updated:
+            logger.info("Optimizing Topology...")
+            while True:
+                try:
+                    communicator.optimize_topology()  # may raise an error if it fails
+                    break
+                except PCCLError as e:
+                    print(f"[Peer] OptimizeTopology failed => {e}. Retrying...")
+                    time.sleep(0.1)
+
             logger.info("Running shared state synchronization...")
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list,
                                   logger,
