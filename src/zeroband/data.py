@@ -35,10 +35,13 @@ class FakeTokenizedDataset(StatefulDataset):
 
     def __iter__(self) -> Generator[dict[str, Any], Any, None]:
         while True:
-            len_ = random.randint(1, self.seq_len)
-            input_ids = torch.randint(3, self.vocab_size, (len_,)).tolist()
+            data = torch.randint(3, self.vocab_size, (self.seq_len + 1,))
+
+            input_ids = data[:-1]
+            labels = data[1:]
+
             self.step += 1
-            yield {"input_ids": input_ids}
+            yield {"input_ids": input_ids, "labels": labels, "seqlens": torch.tensor([1024], dtype=torch.int64)}
 
     def state_dict(self):
         return {"step": self.step}
