@@ -134,16 +134,20 @@ class FlopCounter:
         self._num_backward_flops: int = 0
         self.no_infer_bwd_flops = no_infer_bwd_flops
 
+    @torch.compiler.disable
     def track_forward_flops(self, num_flops: int):
         self._num_forward_flops += num_flops
 
+    @torch.compiler.disable
     def track_backward_flops(self, num_flops: int, force_track_bwd: bool = False):
         if not self.no_infer_bwd_flops or force_track_bwd:
             self._num_backward_flops += num_flops
 
+    @torch.compiler.disable
     def get_performed_flops(self) -> int:
         return self._num_forward_flops + self._num_backward_flops
 
+    @torch.compiler.disable
     def track_linear(self, linear: torch.nn.Linear, x: torch.Tensor):
         """
         Tracks the number of flops for both the forward and backward passes of a linear layer.
@@ -183,6 +187,7 @@ class FlopCounter:
         total_backward_flops = grad_input_flops + grad_weight_flops + grad_bias_flops
         self.track_backward_flops(total_backward_flops)
 
+    @torch.compiler.disable
     def track_binary(self, a: torch.Tensor, b: torch.Tensor):
         """
         Tracks the amount of flops that are performed when performing a binary elementwise operator of
@@ -193,6 +198,7 @@ class FlopCounter:
         self.track_forward_flops(num_flops)
         self.track_backward_flops(num_flops)
 
+    @torch.compiler.disable
     def track_unary(self, x: torch.Tensor):
         """
         Tracks the amount of flops that are performed when performing a unary elementwise operator on the same shape
@@ -201,6 +207,7 @@ class FlopCounter:
         self.track_forward_flops(x.numel())
         self.track_backward_flops(x.numel())
 
+    @torch.compiler.disable
     def track_mha_attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, is_causal=False):
         # Refer to shape legend:
         # https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
@@ -264,6 +271,7 @@ class FlopCounter:
         self.track_backward_flops(math.floor(forward_flops * 2.5))
 
 
+    @torch.compiler.disable
     def track_norm(self, norm: torch.nn.Module, x: torch.Tensor):
         d = x.size(-1)
         if isinstance(norm, torch.nn.LayerNorm):
@@ -286,6 +294,7 @@ class FlopCounter:
 
         self.track_forward_flops(flops)
 
+    @torch.compiler.disable
     def track_optimizer_step(self, optimizer: torch.optim.Optimizer, num_param_scalars: int):
         if isinstance(optimizer, torch.optim.Adam):
             flops_per_param = 14
@@ -295,6 +304,7 @@ class FlopCounter:
             raise NotImplementedError(f"Optimizer type {type(optimizer)} not supported for flop tracking.")
         self.track_backward_flops(flops_per_param * num_param_scalars, force_track_bwd=True)
 
+    @torch.compiler.disable
     def track_cross_entropy(self, logits: torch.Tensor):
         """
            Tracks the FLOPs performed for the cross entropy loss computation.

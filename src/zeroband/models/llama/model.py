@@ -291,7 +291,7 @@ class Attention(nn.Module):
         return self.wo(output)
 
     def _sdpa_attention(self, xq, xk, xv, flop_counter: FlopCounter) -> torch.Tensor:
-        with sdpa_kernel(SDPBackend.MATH) if self.attn_fn == "math" else contextlib.nullcontext():
+        with sdpa_kernel(SDPBackend.FLASH_ATTENTION) if self.attn_fn == "sdpa" else contextlib.nullcontext():
             output = torch.nn.functional.scaled_dot_product_attention(xq, xk, xv, is_causal=True)
             flop_counter.track_mha_attention(xq, xk, xv, is_causal=True)
 
@@ -314,7 +314,7 @@ class Attention(nn.Module):
             block_mask: BlockMask | None,
             flop_counter: FlopCounter,
     ) -> torch.Tensor:
-        if block_mask is not None:
+        if block_mask is not None and self.attn_fn == "flex":
             return self._flex_attention_with_seqlens(xq, xk, xv, block_mask, flop_counter=flop_counter)
         else:
             return self._sdpa_attention(xq, xk, xv, flop_counter=flop_counter)

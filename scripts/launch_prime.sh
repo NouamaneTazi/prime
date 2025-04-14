@@ -1,5 +1,9 @@
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=0 GPU_ORDINAL=0 WORLD_SIZE=4 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=1 GPU_ORDINAL=1 WORLD_SIZE=4 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=2 GPU_ORDINAL=2 WORLD_SIZE=4 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=3 GPU_ORDINAL=3 WORLD_SIZE=4 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=0 GPU_ORDINAL=0 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=1 GPU_ORDINAL=1 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=2 GPU_ORDINAL=2 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=3 GPU_ORDINAL=3 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=4 GPU_ORDINAL=4 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=5 GPU_ORDINAL=5 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=6 GPU_ORDINAL=6 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MASTER_ADDR=127.0.0.1 MASTER_PORT=1234 RANK=7 GPU_ORDINAL=7 WORLD_SIZE=8 ZERO_BAND_LOG_LEVEL=DEBUG python src/zeroband/train.py @configs/debug/diloco.toml &
 wait

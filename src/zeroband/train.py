@@ -778,8 +778,6 @@ def main():
     # Allow eager fallback during production so that the training runs don't die
     # However, in development, we want to know that we broke torch compile
     # torch._dynamo.config.suppress_errors = "ZERO_BAND_DEV" not in os.environ  # type: ignore
-    torch.set_float32_matmul_precision("high")
-
     mpi_config: Optional[MPIConfig] = ccl_utils.make_mpi_config(
         mpi_rank=os.getenv("RANK"),
         mpi_world_size=os.getenv("WORLD_SIZE")

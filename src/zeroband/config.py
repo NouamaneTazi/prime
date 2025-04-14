@@ -116,7 +116,7 @@ class MemoryProfilerConfig(BaseConfig):
     snapshot_dir: str
 
 
-AttnFnType: TypeAlias = Literal["flex", "math"]
+AttnFnType: TypeAlias = Literal["flex", "sdpa"]
 CclLibType: TypeAlias = Literal["nccl", "pccl"]
 
 
