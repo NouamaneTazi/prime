@@ -1,18 +1,42 @@
-project = "debug_7B_zero_band"
-
 model_name = "7B"
-model_type = "llama2"
+model_type = "llama3"
+
+wandb = true
+log_all_ranks = true
 
 [hardware]
-micro_batch_size = 64
-reshard_after_forward = false
+micro_batch_size = 8
+reshard_after_forward = true
+torch_compile = false
+attn_fn="sdpa"
 
 [train]
 batch_size = 512
 
+[train.lr_scheduler]
+lr = 3e-4
+end_lr = 0.0
+num_warmup_steps = 8000
+num_decay_steps = 1.2e6
+
+[train.outer_lr_scheduler]
+lr = 0.7
+end_lr = 0.7
+num_decay_steps = 0
+num_warmup_steps = 0
+num_stable_steps = 0
+
+[train.outer_optimizer]
+type = "sgd"
+
 [data]
 seq_length = 1024
-dataset_name_or_paths = "datasets/fineweb-edu"
+dataset_name_or_paths = 'http://65.108.32.176:8080/api/v1/datasets/fineweb-edu-train/stream'
+token_bit_size = 17
+
+[diloco]
+inner_steps = 64
+delayed_update = true
 
 [pccl]
 ccoip_host = "127.0.0.1:48148"
