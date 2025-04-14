@@ -109,14 +109,15 @@ def run_inner_steps(
         memory_profiler: MemoryProfiler,
 
         local_world_size: int,
+        global_world_size: int,
 
-        mpi_config: Optional[MPIConfig],
+        mpi_config: MPIConfig | None,
         train_profiler: Profiler,
         config: Config,
         training_progress: TrainingProgress,
         grad_accum_steps: int,
 
-        timing_events: List[Tuple[torch.cuda.Event, torch.cuda.Event]]
+        timing_events: list[tuple[torch.cuda.Event, torch.cuda.Event]]
 ):
     num_inner_steps = config.diloco.inner_steps if config.diloco is not None else 1
     num_param_scalars = model.count_parameters()
@@ -217,7 +218,8 @@ def run_inner_steps(
         })
 
         if config.diloco is not None:
-            metrics["num_peers"] = local_world_size
+            metrics["num_peers"] = global_world_size
+            metrics["num_nodes"] = local_world_size
 
         if (mpi_config is None or mpi_config.mpi_rank == 0) and config.wandb:
             wandb.log(metrics)
@@ -654,6 +656,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
         # Possibly update topology / wait for enough peers
         global_world_size: int
+        mpi_ranks_pending: bool = False
         with train_profiler.session("pccl::update_topology"):
             if local_iter_num > 1:
                 logger.info("Checking are_peers_pending...")
@@ -704,6 +707,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
             logger, memory_profiler,
 
             local_world_size,
+            global_world_size,
 
             mpi_config, train_profiler, config,
             training_progress, grad_accum_steps, timing_events

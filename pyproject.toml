@@ -21,7 +21,8 @@ dependencies = [
     "wandb",
     "numba",
     "imageio[ffmpeg]",
-    "pccl @ git+https://github.com/PrimeIntellect-ai/pccl.git@main#subdirectory=python/framework"
+    "pccl @ git+https://github.com/PrimeIntellect-ai/pccl.git@main#subdirectory=python/framework",
+    "datasetstream @ git+https://github.com/PrimeIntellect-ai/datasetstream@main"
 ]
 
 [project.optional-dependencies]

@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict
 from typing import Any, Generator, List, Dict
 
 import torch
+from datasetstream.dataset_client import DatasetClientIteratorSync
 from torch.distributed.checkpoint.stateful import Stateful
 from torch.utils.data import IterableDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -259,6 +260,37 @@ class ParquetDataset(StatefulDataset):
         return parquet_table
 
 
+class StreamingDataset(StatefulDataset):
+
+    def __init__(self, dataset_url: str, seed: int, seq_len: int, tokenizer_info: TokenizerInfo):
+        self.dataset_url = dataset_url
+        self.seed = seed
+        self.seq_len = seq_len
+        self.tokenizer_info = tokenizer_info
+
+    def __iter__(self):
+        with DatasetClientIteratorSync(self.dataset_url, self.seed, 1, self.seq_len + 1, prefetch_size=512) as iterator:
+            while True:
+                tokens = next(iterator)
+                tokens = torch.from_numpy(tokens[0]).to(torch.int64)
+
+                input_ids = tokens[:-1]
+                labels = tokens[1:]
+
+                # create document lengths from where eot tokens are placed inside chunk
+                document_lengths = []
+                cur_len = 0
+                for t in input_ids:
+                    cur_len += 1
+                    if t == self.tokenizer_info.eot_token:
+                        document_lengths.append(cur_len)
+                        cur_len = 0
+                document_lengths.append(cur_len)
+
+                document_lengths = torch.tensor(document_lengths, dtype=torch.int64, device='cpu')
+                yield {'input_ids': input_ids, 'labels': labels, 'seqlens': document_lengths}
+
+
 def collate_fn(samples: list[dict[str, torch.LongTensor]]) -> dict[str, torch.LongTensor | list[torch.LongTensor]]:
     assert samples[0].keys() == {"input_ids", "labels", "seqlens"}
 
@@ -310,6 +342,21 @@ def make_mixed_nibble_dataset(data_config: DataConfig, tokenizer_info: Tokenizer
                        iterator_seed) for dataset_path in dataset_paths],
         probabilities
     )
+
+
+def make_streaming_dataset(config: DataConfig, tokenizer_info: TokenizerInfo) -> StatefulDataset:
+    dataset_url = config.dataset_name_or_paths
+    seq_length = config.seq_length
+
+    rand = random.Random()
+
+    # iterator seed *must* be random to avoid different peers training on same data, killing the point of DDP
+    # There is no "rank" in PCCL, and even if there was it would still not be a safe seed.
+    # There are internal UUIDs, but they are not exposed for now.
+    # Random is fine for now.
+    seed = rand.randint(0, 2 ** 31 - 1)
+
+    return StreamingDataset(dataset_url, seed, seq_length, tokenizer_info)
 
 
 def get_parquet_files(dataset_path: str) -> List[str]:
@@ -372,11 +419,16 @@ def make_dataloader(
     if data_config.fake:
         train_dataset = FakeTokenizedDataset(data_config.seq_length, DEBUG_VOCAB_SIZE)
     else:
-        is_nibble = _is_or_contains_nibble_file(data_config.dataset_name_or_paths)
-        if is_nibble:
-            train_dataset = make_mixed_nibble_dataset(data_config, tokenizer_info)
+        # noinspection HttpUrlsUsage
+        if (data_config.dataset_name_or_paths.startswith("http://")
+                or data_config.dataset_name_or_paths.startswith("https://")):
+            train_dataset = make_streaming_dataset(data_config, tokenizer_info)
         else:
-            train_dataset = make_mixed_parquet_dataset(data_config, tokenizer_info)
+            is_nibble = _is_or_contains_nibble_file(data_config.dataset_name_or_paths)
+            if is_nibble:
+                train_dataset = make_mixed_nibble_dataset(data_config, tokenizer_info)
+            else:
+                train_dataset = make_mixed_parquet_dataset(data_config, tokenizer_info)
 
     return StatefulDataLoader(
         train_dataset,
