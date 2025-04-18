@@ -407,7 +407,7 @@ def _is_or_contains_nibble_file(paths_string: str):
         return any([path.endswith('.bin') for path in paths_string.split(',')])
     else:
         if not os.path.isdir(paths_string):
-            raise ValueError("path string with out ',' delimiter must be a directory!")
+            raise ValueError("path string without ',' delimiter must be a directory!")
         files = os.listdir(paths_string)
         return any([path.endswith('.bin') for path in files])
 

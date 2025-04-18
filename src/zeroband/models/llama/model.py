@@ -291,9 +291,8 @@ class Attention(nn.Module):
         return self.wo(output)
 
     def _sdpa_attention(self, xq, xk, xv, flop_counter: FlopCounter) -> torch.Tensor:
-        with sdpa_kernel(SDPBackend.FLASH_ATTENTION) if self.attn_fn == "sdpa" else contextlib.nullcontext():
-            output = torch.nn.functional.scaled_dot_product_attention(xq, xk, xv, is_causal=True)
-            flop_counter.track_mha_attention(xq, xk, xv, is_causal=True)
+        output = torch.nn.functional.scaled_dot_product_attention(xq, xk, xv, is_causal=True)
+        flop_counter.track_mha_attention(xq, xk, xv, is_causal=True)
 
         output = output.transpose(1, 2).contiguous()  # (bs, seqlen, n_local_heads, head_dim)
         return output

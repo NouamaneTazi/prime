@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+import zlib
 from dataclasses import asdict
 from logging import Logger
 from typing import TYPE_CHECKING, Optional, Iterator, List, Dict, Tuple
@@ -233,6 +234,14 @@ def run_inner_steps(
         train_profiler.end_session()
 
 
+def compute_crc32(tensor: torch.Tensor) -> int:
+    tensor_cpu = tensor.detach().cpu()
+    tensor_contiguous = tensor_cpu.contiguous()
+    tensor_np = tensor_contiguous.numpy()
+    tensor_bytes = tensor_np.tobytes()
+    checksum = zlib.crc32(tensor_bytes)
+    return checksum
+
 def run_async_outer_step(
         model: torch.nn.Module,
         last_pseudo_grads: List[torch.Tensor],
@@ -253,7 +262,9 @@ def run_async_outer_step(
     # await previous all reduce, if one exists
     can_outer_step = False
     if all_reduce_thread is not None:
+        logger.info("joining previous all reduce...")
         all_reduce_thread.join()
+        logger.info("joined previous all reduce.")
         can_outer_step = True
 
         # populate outer param grads with last pseudo-gradients set by thread
@@ -270,8 +281,8 @@ def run_async_outer_step(
         outer_p_data: torch.Tensor = outer_p.data
         if isinstance(param_data, DTensor):
             param_data = param_data.to_local()
-        outer_p.grad = outer_p_data - param_data.to('cpu')
-        outer_grads.append(outer_p.grad)
+        outer_p_grad = outer_p_data - param_data.to('cpu')
+        outer_grads.append(outer_p_grad)
 
     if can_outer_step:
         outer_optimizer.step()  # Note that there is no zero-grad because grads get re-instantiated every step
@@ -296,7 +307,7 @@ def run_async_outer_step(
             # is applied that they were not part of.
             logger.info(
                 "Topology updated mid run; re-running shared state synchronization to properly insert new peer...")
-            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, num_syncs, train_profiler,
+            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, logger, num_syncs, train_profiler,
                                   False)
 
     else:
@@ -307,8 +318,8 @@ def run_async_outer_step(
             # We obtain the shared state first and then simply copy it into the inner model afterwards.
             # Also: late_joiner here means that we tolerate actually receiving bytes here despite that this is the second sync that was performed.
             # This is necessary for the pipeline insertion algorithm to function
-            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, num_syncs, train_profiler,
-                                  False)
+            run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, logger, num_syncs, train_profiler,
+                                  True)
 
         # This is the boostrap for the 1-step behind asynchronous training step.
         # Reset the inner state here to be equal to the unmodified outer state.
@@ -335,12 +346,16 @@ def run_async_outer_step(
 
     def run_all_reduce():
         nonlocal last_pseudo_grads
-        last_pseudo_grads = outer_grads.copy()
+
+        last_pseudo_grads.clear()
+        last_pseudo_grads.extend(outer_grads)
+
         start_time = time.time()
         pccl_utils.all_reduce_multiple_with_retry(
             communicator,
             last_pseudo_grads,
-            ReduceOp.AVG
+            ReduceOp.AVG,
+            max_in_flight=128
         )
         end_time = time.time()
         logger.info(f"All-Reduce took {end_time - start_time} seconds")
@@ -453,6 +468,7 @@ def run_shared_state_sync(
 ):
     # 3) Sync shared state => ensures we have the same aggregator (outer) parameters
     with train_profiler.session("pccl::sync_shared_state"):
+        logger.info(f"run_shared_state_sync: shared_state_revision: {shared_state.revision}")
         sync_info = communicator.sync_shared_state(shared_state)
         shared_state.revision += 1
         logger.info(f"sync_info tx_bytes: {sync_info.tx_bytes}, rx_bytes: {sync_info.rx_bytes}")
@@ -694,13 +710,13 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
         if topology_updated:
             logger.info("Optimizing Topology...")
-            while True:
-                try:
-                    communicator.optimize_topology()  # may raise an error if it fails
-                    break
-                except PCCLError as e:
-                    print(f"[Peer] OptimizeTopology failed => {e}. Retrying...")
-                    time.sleep(0.1)
+            #while True:
+            #    try:
+            #        communicator.optimize_topology()  # may raise an error if it fails
+            #        break
+            #    except PCCLError as e:
+            #        print(f"[Peer] OptimizeTopology failed => {e}. Retrying...")
+            #        time.sleep(0.1)
 
             logger.info("Running shared state synchronization...")
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list,
@@ -720,6 +736,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
             mpi_config, train_profiler, config,
             training_progress, grad_accum_steps, timing_events
         )
+        logger.info("Inner steps done")
 
         # post inner steps
         if PRIME_TRAIN_PROFILER_PRINT_TIMINGS:

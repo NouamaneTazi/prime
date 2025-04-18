@@ -265,7 +265,8 @@ class FlopCounter:
         E = E_q
         mha_flops = 4.0 * N * (S * L) * E
 
-        mask_occupancy = 1.0 - (mask_sparsity.sparsity() / 100.0)
+        #mask_occupancy = 1.0 - (mask_sparsity.sparsity() / 100.0)
+        mask_occupancy = 0.5 # assert 50% for stability despite the fact that its wrong
         forward_flops = math.floor(mha_flops * mask_occupancy)
         self.track_forward_flops(forward_flops)
         self.track_backward_flops(math.floor(forward_flops * 2.5))
