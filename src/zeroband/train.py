@@ -762,6 +762,10 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
         iter_num += 1
         training_progress.outer_step = iter_num.item()
+        if config.diloco is not None:
+            training_progress.step = training_progress.outer_step * config.diloco.inner_steps
+        else:
+            training_progress.step = training_progress.outer_step
 
         if (
                 config.ckpt.interval is not None
