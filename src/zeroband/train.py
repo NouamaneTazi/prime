@@ -724,6 +724,12 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
                                   num_syncs, train_profiler,
                                   False)
 
+        training_progress.outer_step = iter_num.item()
+        if config.diloco is not None:
+            training_progress.step = training_progress.outer_step * config.diloco.inner_steps
+        else:
+            training_progress.step = training_progress.outer_step
+
         logger.info("Running inner steps...")
         run_inner_steps(
             model, train_dataloader_iterator, inner_optimizer, device,
@@ -761,11 +767,6 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
                                                    config.diloco.delayed_update)
 
         iter_num += 1
-        training_progress.outer_step = iter_num.item()
-        if config.diloco is not None:
-            training_progress.step = training_progress.outer_step * config.diloco.inner_steps
-        else:
-            training_progress.step = training_progress.outer_step
 
         if (
                 config.ckpt.interval is not None
