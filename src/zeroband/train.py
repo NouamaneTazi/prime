@@ -164,9 +164,6 @@ def run_inner_steps(
         end_event.record()
         timing_events.append((start_event, end_event))
 
-        # logging
-        training_progress.step += 1
-
         # syncing loss across all data parallel rank within a nodes
         new_tokens = config.data.seq_length * config.train.batch_size
 
@@ -196,6 +193,7 @@ def run_inner_steps(
         metrics = {
             "loss/train": loss_batch.item(),
             "step": training_progress.step,
+            "outer_step": training_progress.outer_step,
             "inner_lr": inner_lr,
             "Perplexity": torch.exp(loss_batch).item(),
             "total_tokens": training_progress.total_tokens,
