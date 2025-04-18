@@ -161,6 +161,8 @@ def run_inner_steps(
             inner_optimizer.step()
             inner_optimizer.zero_grad(set_to_none=False)
 
+        training_progress.step += 1
+
         end_event.record()
         timing_events.append((start_event, end_event))
 
