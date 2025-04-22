@@ -710,13 +710,13 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
 
         if topology_updated:
             logger.info("Optimizing Topology...")
-            #while True:
-            #    try:
-            #        communicator.optimize_topology()  # may raise an error if it fails
-            #        break
-            #    except PCCLError as e:
-            #        print(f"[Peer] OptimizeTopology failed => {e}. Retrying...")
-            #        time.sleep(0.1)
+            while True:
+                try:
+                    communicator.optimize_topology()  # may raise an error if it fails
+                    break
+                except PCCLError as e:
+                    print(f"[Peer] OptimizeTopology failed => {e}. Retrying...")
+                    time.sleep(0.1)
 
             logger.info("Running shared state synchronization...")
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list,
