@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional, Iterator, List, Dict, Tuple
 
 import torch
 import torch.distributed as dist
-from pccl import SharedState, TensorInfo, Attribute, Communicator, PCCLError, ReduceOp
+from pccl import SharedState, TensorInfo, Attribute, Communicator, PCCLError, ReduceOp, SharedStateSyncStrategy
 
 from torch.distributed import destroy_process_group
 from torch.distributed.tensor import DTensor
@@ -308,7 +308,7 @@ def run_async_outer_step(
             logger.info(
                 "Topology updated mid run; re-running shared state synchronization to properly insert new peer...")
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, logger, num_syncs, train_profiler,
-                                  False)
+                                  False, SharedStateSyncStrategy.SEND_ONLY)
 
     else:
         if topology_updated and iter_num > 0:
@@ -319,7 +319,7 @@ def run_async_outer_step(
             # Also: late_joiner here means that we tolerate actually receiving bytes here despite that this is the second sync that was performed.
             # This is necessary for the pipeline insertion algorithm to function
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list, logger, num_syncs, train_profiler,
-                                  True)
+                                  True, SharedStateSyncStrategy.RECEIVE_ONLY)
 
         # This is the boostrap for the 1-step behind asynchronous training step.
         # Reset the inner state here to be equal to the unmodified outer state.
@@ -465,11 +465,12 @@ def run_shared_state_sync(
         num_syncs: IntRef,
         train_profiler: Profiler,
         late_joiner: bool,
+        strategy: SharedStateSyncStragy
 ):
     # 3) Sync shared state => ensures we have the same aggregator (outer) parameters
     with train_profiler.session("pccl::sync_shared_state"):
         logger.info(f"run_shared_state_sync: shared_state_revision: {shared_state.revision}")
-        sync_info = communicator.sync_shared_state(shared_state)
+        sync_info = communicator.sync_shared_state(shared_state, strategy)
         shared_state.revision += 1
         logger.info(f"sync_info tx_bytes: {sync_info.tx_bytes}, rx_bytes: {sync_info.rx_bytes}")
         num_syncs += 1
@@ -722,7 +723,7 @@ def train(logger: Logger, config: Config, mpi_config: Optional[MPIConfig], devic
             run_shared_state_sync(shared_state, communicator, model, outer_parameters_list,
                                   logger,
                                   num_syncs, train_profiler,
-                                  False)
+                                  False, SharedStateSyncStrategy.ENFORCE_POPULAR)
 
         training_progress.outer_step = iter_num.item()
         if config.diloco is not None:
