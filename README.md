@@ -63,7 +63,7 @@ source $HOME/.local/bin/env
 3. Set up the environment:
 ```bash
 sudo apt install iperf -y
-uv venv
+uv venv --python 3.12.1
 source .venv/bin/activate
 uv sync --extra all
 git submodule update --init --recursive
